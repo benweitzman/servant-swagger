@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -78,14 +79,31 @@ import           Servant.Swagger.Internal.TypeLevel
 -- ...No instance for (Arbitrary Contact)
 -- ...  arising from a use of ‘validateEveryToJSON’
 -- ...
-validateEveryToJSON :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'Response JSON api) =>
+validateEveryToJSON :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'AnyContext JSON api) =>
   proxy api   -- ^ Servant API.
   -> Spec
-validateEveryToJSON _ = props
+validateEveryToJSON = validateEveryToJSONInContext (Proxy :: Proxy 'AnyContext)
+  
+validateEveryToJSONInContext:: forall p p' api ctx. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes ctx JSON api) =>
+  p ctx   -- ^ body contexts to check
+  -> p' api   -- ^ Servant API.
+  -> Spec
+validateEveryToJSONInContext _ _ = props
   (Proxy :: Proxy [ToJSON, ToSchema])
   (maybeCounterExample . prettyValidateWith validateToJSON)
-  (Proxy :: Proxy (BodyTypes 'Response JSON api))
+  (Proxy :: Proxy (BodyTypes ctx JSON api))
 
+
+validateEveryToJSONResponse :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'Response JSON api) =>
+  proxy api   -- ^ Servant API.
+  -> Spec
+validateEveryToJSONResponse = validateEveryToJSONInContext (Proxy :: Proxy 'Response)
+
+validateEveryToJSONRequest :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'Request JSON api) =>
+  proxy api   -- ^ Servant API.
+  -> Spec
+validateEveryToJSONRequest = validateEveryToJSONInContext (Proxy :: Proxy 'Request)
+    
 -- | Verify that every type used with @'JSON'@ content type in a servant API
 -- has compatible @'ToJSON'@ and @'ToSchema'@ instances using @'validateToJSONWithPatternChecker'@.
 --

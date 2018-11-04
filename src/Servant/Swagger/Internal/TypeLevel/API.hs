@@ -63,7 +63,7 @@ type family Remove x xs where
   Remove x (x ': ys) =      Remove x ys
   Remove x (y ': ys) = y ': Remove x ys
 
-data BodyContext = Request | Response
+data BodyContext = Request | Response | AnyContext
 
 -- | Extract a list of unique "body" types for a specific content-type from a servant API.
 type BodyTypes ctx c api = Nub (BodyTypes' ctx c api)
@@ -76,8 +76,11 @@ type AddBodyType c cs a as = If (Elem c cs) (a ': as) as
 -- To extract unique types see @'BodyTypes'@.
 type family BodyTypes' (ctx :: BodyContext) c api :: [*] where
   BodyTypes' 'Response c (Verb verb b cs (Headers hdrs a)) = AddBodyType c cs a '[]
+  BodyTypes' 'AnyContext c (Verb verb b cs (Headers hdrs a)) = AddBodyType c cs a '[]  
   BodyTypes' 'Response c (Verb verb b cs a) = AddBodyType c cs a '[]
+  BodyTypes' 'AnyContext c (Verb verb b cs a) = AddBodyType c cs a '[]  
   BodyTypes' 'Request c (ReqBody cs a :> api) = AddBodyType c cs a (BodyTypes' 'Request c api)
+  BodyTypes' 'AnyContext c (ReqBody cs a :> api) = AddBodyType c cs a (BodyTypes' 'AnyContext c api)  
   BodyTypes' ctx c (e :> api) = BodyTypes' ctx c api
   BodyTypes' ctx c (a :<|> b) = AppendList (BodyTypes' ctx c a) (BodyTypes' ctx c b)
   BodyTypes' ctx c api = '[]
