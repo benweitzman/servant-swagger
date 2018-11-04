@@ -6,11 +6,12 @@
 {-# LANGUAGE TypeOperators       #-}
 module Servant.Swagger.Internal.Test where
 
-import           Data.Aeson                         (ToJSON (..))
+import           Data.Aeson                         (ToJSON (..), FromJSON(..))
 import           Data.Aeson.Encode.Pretty           (encodePretty)
 import           Data.Swagger                       (Pattern, ToSchema,
                                                      toSchema)
 import           Data.Swagger.Schema.Validation
+import           Data.Swagger.Schema.Generator
 import           Data.Text                          (Text)
 import qualified Data.Text.Lazy                     as TL
 import qualified Data.Text.Lazy.Encoding            as TL
@@ -77,26 +78,35 @@ import           Servant.Swagger.Internal.TypeLevel
 -- ...No instance for (Arbitrary Contact)
 -- ...  arising from a use of ‘validateEveryToJSON’
 -- ...
-validateEveryToJSON :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes JSON api) =>
+validateEveryToJSON :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'Response JSON api) =>
   proxy api   -- ^ Servant API.
   -> Spec
 validateEveryToJSON _ = props
   (Proxy :: Proxy [ToJSON, ToSchema])
   (maybeCounterExample . prettyValidateWith validateToJSON)
-  (Proxy :: Proxy (BodyTypes JSON api))
+  (Proxy :: Proxy (BodyTypes 'Response JSON api))
 
 -- | Verify that every type used with @'JSON'@ content type in a servant API
 -- has compatible @'ToJSON'@ and @'ToSchema'@ instances using @'validateToJSONWithPatternChecker'@.
 --
 -- For validation without patterns see @'validateEveryToJSON'@.
-validateEveryToJSONWithPatternChecker :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes JSON api) =>
+validateEveryToJSONWithPatternChecker :: forall proxy api. TMap (Every [Typeable, Show, Arbitrary, ToJSON, ToSchema]) (BodyTypes 'Response JSON api) =>
   (Pattern -> Text -> Bool)   -- ^ @'Pattern'@ checker.
   -> proxy api                -- ^ Servant API.
   -> Spec
 validateEveryToJSONWithPatternChecker checker _ = props
   (Proxy :: Proxy [ToJSON, ToSchema])
   (maybeCounterExample . prettyValidateWith (validateToJSONWithPatternChecker checker))
-  (Proxy :: Proxy (BodyTypes JSON api))
+  (Proxy :: Proxy (BodyTypes 'Response JSON api))
+
+validateEveryFromJSON :: forall proxy api. TMap (Every [Typeable, FromJSON, ToSchema]) (BodyTypes 'Request JSON api) =>
+  proxy api
+  -> Spec
+validateEveryFromJSON _ = propsByProxy
+  (Proxy :: Proxy [FromJSON, ToSchema])
+  validateFromJSON
+  (Proxy :: Proxy (BodyTypes 'Request JSON api))
+  
 
 -- * QuickCheck-related stuff
 
@@ -126,13 +136,23 @@ props :: forall p p'' cs xs. TMap (Every (Typeable ': Show ': Arbitrary ': cs)) 
   -> (forall x. EveryTF cs x => x -> Property)  -- ^ Property predicate.
   -> p'' xs                                     -- ^ A list of types.
   -> Spec
-props _ f px = sequence_ specs
+props _ f px = propsByProxy (Proxy :: Proxy (Show ': Arbitrary ': cs)) single px
+  where
+    single :: forall a. (Arbitrary a, Show a, EveryTF cs a) => Proxy a -> Property
+    single _ = property (f :: a -> Property)
+
+propsByProxy :: forall p p' cs xs. TMap (Every (Typeable ': cs)) xs =>
+  p cs
+  -> (forall x. EveryTF cs x => Proxy x -> Property)
+  -> p' xs
+  -> Spec
+propsByProxy _ f px = sequence_ specs
   where
     specs :: [Spec]
-    specs = tmapEvery (Proxy :: Proxy (Typeable ': Show ': Arbitrary ': cs)) aprop px
+    specs = tmapEvery (Proxy :: Proxy (Typeable ': cs)) aprop px
 
-    aprop :: forall p' a. (EveryTF cs a, Typeable a, Show a, Arbitrary a) => p' a -> Spec
-    aprop _ = prop (show (typeOf (undefined :: a))) (f :: a -> Property)
+    aprop :: forall p'' a. (EveryTF cs a, Typeable a) => p'' a -> Spec
+    aprop _ = prop (show (typeOf (undefined :: a))) (f (Proxy :: Proxy a))
 
 -- | Pretty print validation errors
 -- together with actual JSON and Swagger Schema

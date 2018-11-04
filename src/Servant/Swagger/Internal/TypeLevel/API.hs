@@ -63,8 +63,10 @@ type family Remove x xs where
   Remove x (x ': ys) =      Remove x ys
   Remove x (y ': ys) = y ': Remove x ys
 
+data BodyContext = Request | Response
+
 -- | Extract a list of unique "body" types for a specific content-type from a servant API.
-type BodyTypes c api = Nub (BodyTypes' c api)
+type BodyTypes ctx c api = Nub (BodyTypes' ctx c api)
 
 -- | @'AddBodyType' c cs a as@ adds type @a@ to the list @as@
 -- only if @c@ is in @cs@.
@@ -72,11 +74,11 @@ type AddBodyType c cs a as = If (Elem c cs) (a ': as) as
 
 -- | Extract a list of "body" types for a specific content-type from a servant API.
 -- To extract unique types see @'BodyTypes'@.
-type family BodyTypes' c api :: [*] where
-  BodyTypes' c (Verb verb b cs (Headers hdrs a)) = AddBodyType c cs a '[]
-  BodyTypes' c (Verb verb b cs a) = AddBodyType c cs a '[]
-  BodyTypes' c (ReqBody cs a :> api) = AddBodyType c cs a (BodyTypes' c api)
-  BodyTypes' c (e :> api) = BodyTypes' c api
-  BodyTypes' c (a :<|> b) = AppendList (BodyTypes' c a) (BodyTypes' c b)
-  BodyTypes' c api = '[]
+type family BodyTypes' (ctx :: BodyContext) c api :: [*] where
+  BodyTypes' 'Response c (Verb verb b cs (Headers hdrs a)) = AddBodyType c cs a '[]
+  BodyTypes' 'Response c (Verb verb b cs a) = AddBodyType c cs a '[]
+  BodyTypes' 'Request c (ReqBody cs a :> api) = AddBodyType c cs a (BodyTypes' 'Request c api)
+  BodyTypes' ctx c (e :> api) = BodyTypes' ctx c api
+  BodyTypes' ctx c (a :<|> b) = AppendList (BodyTypes' ctx c a) (BodyTypes' ctx c b)
+  BodyTypes' ctx c api = '[]
 
